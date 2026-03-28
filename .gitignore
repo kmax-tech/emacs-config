@@ -1,0 +1,17 @@
+# Emacs generated
+.cache
+auto-save-list/
+auto-saves/
+backups/
+places
+recentf
+history
+bookmarks
+custom.el
+tramp
+transient/
+eshell/
+elpa/
+.DS_Store
+spelling
+
