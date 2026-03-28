@@ -225,9 +225,8 @@ REMOTE-HOST is host string like 'user@host' for remote sources, nil for local."
  ^^^^^^^^                                   _M_: chmod
  ^Copy shortcuts^       ^Rsync^              ^Other^
  ^^^^^^^^─────────────────────────────────────────────────────────────────
- _B_: copy to bookmark  _r_: rsync to local  _d_: dual pane (C-c d)
- _L_: copy to last dest ^^                   _w_: copy filename
- ^^^^^^^^                                   _W_: copy full path
+ _B_: copy to bookmark  _r_: rsync to local  _w_: copy filename
+ _L_: copy to last dest ^^                   _W_: copy full path
  ^^
  _q_: quit hydra        _?_: Emacs dired help
 "

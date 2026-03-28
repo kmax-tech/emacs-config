@@ -467,7 +467,7 @@
  up-to-date = clean    edited = modified    added = staged
  removed = to delete   unregistered = new (use _a_ to add)
  ^^
- _q_: quit hydra       _?_: describe mode
+ _w_: resize window    _q_: quit hydra       _?_: describe mode
 "
   ;; Navigation
   ("n" vc-dir-next-line)
@@ -487,9 +487,37 @@
   ("=" vc-diff)
   ("l" vc-print-log :color blue)
   ("g" vc-dir-refresh)
-  ;; Help / quit
+  ;; Window / Help / quit
+  ("w" hydra-window/body :color blue)
   ("?" describe-mode :color blue)
   ("q" nil :color blue))
+
+;; Diff hydra - press ? in diff buffers to navigate hunks
+(defhydra hydra-diff (:hint nil :color pink :foreign-keys run)
+  "
+ ^Hunk^                ^File^               ^Actions^
+ ^^^^^^^^──────────────────────────────────────────────────
+ _n_: next hunk        _N_: next file       _a_: apply hunk
+ _p_: prev hunk        _P_: prev file       _RET_: visit source
+ ^^                   ^^                   _r_: reverse hunk
+ ^^                   ^^                   _e_: edit hunk
+ ^^
+ _w_: resize window    _q_: quit hydra
+"
+  ("n" diff-hunk-next)
+  ("p" diff-hunk-prev)
+  ("N" diff-file-next)
+  ("P" diff-file-prev)
+  ("a" diff-apply-hunk :color blue)
+  ("r" diff-reverse-direction)
+  ("e" diff-ediff-patch :color blue)
+  ("RET" diff-goto-source :color blue)
+  ("w" hydra-window/body :color blue)
+  ("q" nil :color blue))
+
+(add-hook 'diff-mode-hook
+          (lambda ()
+            (define-key diff-mode-map (kbd "?") #'hydra-diff/body)))
 
 (add-hook 'vc-dir-mode-hook
           (lambda ()
