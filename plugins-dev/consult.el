@@ -182,16 +182,38 @@
                                consult-dir--source-tramp-ssh)))
     (consult-dir)))
 
+(defun my/ssh-vterm ()
+  "Pick an SSH host from ~/.ssh/config and open a vterm shell there."
+  (interactive)
+  (let* ((hosts (delq nil
+                 (mapcar (lambda (line)
+                           (when (string-match "^Host\\s-+\\(.+\\)" line)
+                             (let ((h (match-string 1 line)))
+                               (unless (string-match-p "[*?]" h) h))))
+                         (with-temp-buffer
+                           (insert-file-contents "~/.ssh/config")
+                           (split-string (buffer-string) "\n")))))
+         (host (completing-read "SSH to: " hosts nil t))
+         (default-directory (format "/ssh:%s:" host)))
+    (vterm (format "*ssh:%s*" host))))
+
 (global-set-key (kbd "C-c f s") #'my/find-file-ssh)
+(global-set-key (kbd "C-c s") #'my/ssh-vterm)
 
 ;; ====================
 ;; TREEMACS - File tree sidebar
 ;; ====================
+(use-package treemacs-nerd-icons
+  :after treemacs
+  :config
+  (treemacs-load-theme "nerd-icons"))
+
 (use-package treemacs
   :bind (("C-c d" . treemacs)              ; Toggle sidebar
          ("C-c f t" . treemacs-select-window)) ; Jump to sidebar
   :config
-  (treemacs-follow-mode 1)  ; Auto-sync sidebar with current buffer
+  (treemacs-follow-mode 1)            ; Auto-highlight current file in sidebar
+  (treemacs-project-follow-mode 1)    ; Auto-switch root to current buffer's project
   (setq treemacs-width 40
         treemacs-is-never-other-window nil
         treemacs-show-hidden-files t
@@ -215,9 +237,13 @@
   ;; Auto-refresh treemacs when window is resized so filenames re-truncate
   (add-hook 'window-size-change-functions
             (lambda (_frame)
-              (when (treemacs-get-local-window)
-                (treemacs-run-in-every-buffer
-                 (treemacs--do-refresh (current-buffer))))))
+              (ignore-errors
+                (when-let ((win (and (fboundp 'treemacs-get-local-window)
+                                     (treemacs-get-local-window)
+                                     (window-live-p (treemacs-get-local-window))
+                                     (treemacs-get-local-window))))
+                  (with-selected-window win
+                    (treemacs-refresh))))))
 
 ;; ====================
 ;; PROJECT FILE SWITCHING
@@ -235,4 +261,3 @@
 ;; Quick switch between project files (e.g. part3.tex ↔ part4.tex)
 (global-set-key (kbd "C-c f f") #'project-find-file)   ; Find file in project
 (global-set-key (kbd "C-c f b") #'consult-project-buffer) ; Switch project buffers
-

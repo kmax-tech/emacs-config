@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip3 show:*)",
+      "Bash(pip3 install:*)",
+      "Bash(brew install:*)"
+    ],
+    "additionalDirectories": [
+      "/Users/max/.config/eca"
+    ]
+  }
+}

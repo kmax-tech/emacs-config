@@ -9,26 +9,18 @@
   :hook (dired-mode . nerd-icons-dired-mode))
 
 ;; Dired (directory editor) improvements
-(setq dired-listing-switches "-alhgo")  ; Hide owner/group for cleaner view
-
-;; Toggle between minimal and detailed dired listing
-(defun dired-toggle-details-listing ()
-  "Toggle dired between minimal (-alhgo) and detailed (-alh) listing."
-  (interactive)
-  (if (string-match-p "go" dired-actual-switches)
-      (setq dired-actual-switches "-alh")
-    (setq dired-actual-switches "-alhgo"))
-  (revert-buffer))
 (setq dired-dwim-target t)            ; Smart copy/move between two dired windows
 (setq dired-create-destination-dirs 'ask) ; Ask before creating missing directories
 
 (setq dired-mouse-drag-files t)
 (setq mouse-drag-and-drop-region-cross-program t)
 
-
-;; Fix for macOS ls not supporting --dired
+;; Use GNU ls on macOS for --group-directories-first support
 (when (eq system-type 'darwin)
-  (setq dired-use-ls-dired nil))
+  (setq insert-directory-program "gls")
+  (setq dired-use-ls-dired t))
+
+(setq dired-listing-switches "-alh --group-directories-first")
 
 ;; Enable dired-x for extra features
 (require 'dired-x)
@@ -36,8 +28,9 @@
 ;; Auto-load dired-x when entering dired
 (add-hook 'dired-mode-hook
           (lambda ()
-            (dired-omit-mode 1)  ; Start with omit mode on
-            (define-key dired-mode-map (kbd ")") #'dired-toggle-details-listing)))
+            (dired-omit-mode 1)           ; Start with omit mode on
+            (hl-line-mode 1)              ; Highlight current line
+            (define-key dired-mode-map (kbd ")") #'dired-hide-details-mode)))
 
 ;; Configure what to omit (hide dotfiles by default)
 (setq dired-omit-files "^\\..*")
@@ -213,6 +206,40 @@ REMOTE-HOST is host string like 'user@host' for remote sources, nil for local."
      ;; Hydra help menu
      (define-key dired-mode-map (kbd "?") 'hydra-dired/body)))
 
+;; Dired sort commands
+(defun dired-sort-by-name ()
+  "Sort dired by name."
+  (interactive)
+  (dired-sort-other "-alh"))
+
+(defun dired-sort-by-date ()
+  "Sort dired by modification time (newest first)."
+  (interactive)
+  (dired-sort-other "-alht"))
+
+(defun dired-sort-by-size ()
+  "Sort dired by size (largest first)."
+  (interactive)
+  (dired-sort-other "-alhS"))
+
+(defun dired-sort-by-extension ()
+  "Sort dired by file extension (uses GNU ls)."
+  (interactive)
+  (let ((dired-use-ls-dired t)
+        (insert-directory-program "gls"))
+    (dired-sort-other "-alh --sort=extension")))
+
+;; Sort hydra for dired
+(defhydra hydra-dired-sort (:hint nil :color blue)
+  "
+ Sort by: _n_: name  _d_: date  _s_: size  _e_: extension  _q_: cancel
+"
+  ("n" dired-sort-by-name)
+  ("d" dired-sort-by-date)
+  ("s" dired-sort-by-size)
+  ("e" dired-sort-by-extension)
+  ("q" nil))
+
 ;; Dired hydra - press ? in dired to see all commands
 (defhydra hydra-dired (:hint nil :color pink :foreign-keys run)
   "
@@ -221,7 +248,7 @@ REMOTE-HOST is host string like 'user@host' for remote sources, nil for local."
  _n_/_p_: next/prev      _m_: mark            _C_: copy            _)_: toggle details
  _^_: up directory      _u_: unmark          _R_: rename/move     _H_: show/hide dotfiles
  _RET_: open            _U_: unmark all      _D_: delete          _/_: filter (narrow)
- _o_: open other win    _t_: toggle marks    _+_: create dir      _s_: sort (name/date)
+ _o_: open other win    _t_: toggle marks    _+_: create dir      _s_: sort menu
  ^^^^^^^^                                   _M_: chmod
  ^Copy shortcuts^       ^Rsync^              ^Other^
  ^^^^^^^^─────────────────────────────────────────────────────────────────
@@ -244,10 +271,10 @@ REMOTE-HOST is host string like 'user@host' for remote sources, nil for local."
   ("D" dired-do-delete :color blue)
   ("+" dired-create-directory :color blue)
   ("M" dired-do-chmod :color blue)
-  (")" dired-toggle-details-listing)
+  (")" dired-hide-details-mode)
   ("H" dired-omit-mode)
   ("/" dired-narrow-fuzzy :color blue)
-  ("s" dired-sort-toggle-or-edit)
+  ("s" hydra-dired-sort/body :color blue)
   ("B" dired-copy-to-bookmark :color blue)
   ("L" dired-copy-to-last-destination :color blue)
   ("r" dired-rsync-to-local :color blue)

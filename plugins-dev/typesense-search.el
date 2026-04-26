@@ -594,6 +594,33 @@ Call this from search commands to auto-start on first use."
     (message "Typesense server not running, starting...")
     (typesense--start-server)))
 
+(defun typesense-restart-server ()
+  "Restart the Typesense RPC server by sending SIGHUP.
+If the server is not running, start it instead."
+  (interactive)
+  (let ((proc (get-process "typesense-rpc")))
+    (cond
+     ;; Process started by Emacs — send SIGHUP directly
+     ((and proc (process-live-p proc))
+      (signal-process proc 'SIGHUP)
+      (message "Sent SIGHUP to Typesense RPC server (pid %d) — restarting..."
+               (process-id proc)))
+     ;; Server reachable but not started by Emacs — find pid via lsof
+     ((typesense--server-running-p)
+      (let ((pid (string-trim
+                  (shell-command-to-string
+                   (format "lsof -ti tcp:%d"
+                           (string-to-number
+                            (car (last (split-string typesense-rpc-url ":")))))))))
+        (if (string-empty-p pid)
+            (error "Server is running but could not find its PID")
+          (signal-process (string-to-number pid) 'SIGHUP)
+          (message "Sent SIGHUP to Typesense RPC server (pid %s) — restarting..." pid))))
+     ;; Not running at all — just start it
+     (t
+      (message "Server not running, starting fresh...")
+      (typesense--start-server)))))
+
 ;; ============================================================
 ;; Convenience Functions (set filter then call buffer mode)
 ;; ============================================================

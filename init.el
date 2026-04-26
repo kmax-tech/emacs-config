@@ -28,6 +28,9 @@
 ;; Always load source file, never compiled version (useful during development)
 (setq load-prefer-newer t)
 
+;; Disable bell sound completely
+(setq ring-bell-function 'ignore)
+
 ;; ====================
 ;; BASIC SETTINGS
 ;; ====================
@@ -39,6 +42,7 @@
 
 ;; Remove clutter
 (setq inhibit-startup-message t)
+(setq frame-title-format "%b")
 (tool-bar-mode -1)
 (menu-bar-mode -1)
 (scroll-bar-mode -1)
@@ -76,7 +80,10 @@
 ;; Enable auto-revert for remote files (TRAMP)
 (setq auto-revert-remote-files t)
 ;; Check less frequently for remote files (every 10 seconds instead of 5)
-(setq auto-revert-interval 10)
+(setq auto-revert-interval 5)
+;; Use file hash instead of timestamp to detect changes (catches CVS timestamp issues)
+(setq auto-revert-use-notify nil)
+(setq auto-revert-check-vc-info t)
 
 ;; Remember recent files
 (recentf-mode 1)
@@ -137,6 +144,9 @@
 
 ;; consult-dir enables recursive minibuffers locally when needed
 (setq enable-recursive-minibuffers nil)
+
+;; Gray out obsolete path when typing an absolute path in minibuffer
+(file-name-shadow-mode 1)
 
 ;; Better minibuffer completion
 (use-package vertico
@@ -202,8 +212,15 @@
     (setq markdown-command "markdown"))
 (t
  (message "No Markdown processor found; preview disabled"))
+  ;; Force markdown faces to use the default monospace font
+  (custom-set-faces
+   '(markdown-bold-face ((t (:inherit default :weight bold))))
+   '(markdown-italic-face ((t (:inherit default :slant italic))))
+   '(markdown-header-face ((t (:inherit default :weight bold)))))
   ;; Use visual-line-mode for better reading
   (add-hook 'markdown-mode-hook 'visual-line-mode)
+  ;; Auto-align tables
+  (add-hook 'markdown-mode-hook 'orgtbl-mode)
   ;; Auto-format on save (optional)
   (add-hook 'markdown-mode-hook
             (lambda ()
@@ -256,6 +273,8 @@
                                  (kill-buffer))))
 (global-set-key (kbd "s-q") 'save-buffers-kill-terminal) ; Cmd-Q = Quit
 (global-set-key (kbd "s-/") 'comment-line)       ; Cmd-/ = Comment/uncomment line
+(global-set-key (kbd "s-<up>") 'beginning-of-buffer)   ; Cmd-Up = Top of buffer
+(global-set-key (kbd "s-<down>") 'end-of-buffer)       ; Cmd-Down = Bottom of buffer
 
 ;; Quick access to recent files
 (global-set-key (kbd "C-x C-r") 'consult-recent-file)
@@ -300,6 +319,8 @@
 
 ;; Smoother font rendering
 (setq-default line-spacing 0.2)
+;; (pixel-scroll-precision-mode 1) ;; not needed on emacs-mac
+
 
 ;; Column number in mode line
 (column-number-mode 1)
@@ -316,6 +337,7 @@
   :commands (kubel)
   :config
   (setq kubel-use-namespace-list 'on)
+  (setq kubel-namespace "webisservices")
   
   ;; Show namespace in modeline
   (add-to-list 'mode-line-misc-info
@@ -338,6 +360,18 @@
       (with-temp-file (expand-file-name "~/.kube_last_namespace")
         (insert kubel-namespace))))
   
+  ;; Rollout restart for deployment under cursor
+  (defun kubel-rollout-restart ()
+    "Rollout restart the deployment under cursor."
+    (interactive)
+    (let ((resource (kubel--get-resource-under-cursor)))
+      (when (y-or-n-p (format "Rollout restart %s?" resource))
+        (let ((cmd (format "%s rollout restart %s %s"
+                           (kubel--get-command-prefix) kubel-resource resource)))
+          (shell-command cmd)
+          (message "Rollout restart: %s" resource)
+          (kubel-refresh)))))
+
   ;; Hook it up
   (add-hook 'kubel-mode-hook
             (lambda ()
@@ -367,7 +401,7 @@
   :demand t
   :config
   (setq exec-path-from-shell-arguments '("-l"))  ; login shell to read ~/.zprofile (avoids noisy interactive plugins)
-  (setq exec-path-from-shell-variables '("PATH" "MANPATH" "SSH_AUTH_SOCK"))
+  (setq exec-path-from-shell-variables '("PATH" "MANPATH" "SSH_AUTH_SOCK" "ANTHROPIC_API_KEY" "OPENAI_API_KEY"))
   (setq exec-path-from-shell-check-startup-files nil)
   (exec-path-from-shell-initialize))
 
@@ -386,9 +420,19 @@
   ;;             (concat (getenv "HOME") "/.ssh/agent.sock")))))
 
 
+;; Auto-save more frequently
+(setq auto-save-interval 100)   ; every 100 keystrokes (default 300)
+(setq auto-save-timeout 15)     ; after 15 seconds idle (default 30)
+
 ;; TRAMP settings for SSH connections
 (setq tramp-default-method "ssh")
 (setq tramp-use-ssh-controlmaster-options nil)
+(setq tramp-verbose 1)                        ; minimal logging (default 3 is chatty)
+(setq tramp-auto-save-directory "~/.emacs.d/tramp-autosave/") ; local autosaves
+(setq remote-file-name-inhibit-cache nil)      ; cache remote file attributes
+(setq tramp-completion-reread-directory-timeout nil) ; don't re-read remote dirs
+(setq vc-ignore-dir-regexp                     ; skip VC checks on remote files
+      (format "%s\\|%s" vc-ignore-dir-regexp tramp-file-name-regexp))
 
 ;; Copy remote file to local directory (keeps same filename)
 (defun copy-remote-file-to-local ()
@@ -452,121 +496,19 @@
 ;; Remember window configuration
 (winner-mode 1)
 
-;; VC/CVS hydra - press ? in vc-dir to see all commands
-(defhydra hydra-vc-dir (:hint nil :color pink :foreign-keys run)
-  "
- ^Navigation^         ^Mark^               ^Actions^             ^View^
- ^^^^^^^^──────────────────────────────────────────────────────────────────
- _n_/_p_: next/prev     _m_: mark            _v_: next action      _=_: diff
- _RET_: open file      _u_: unmark          _a_: add file         _l_: log history
- ^^                   _M_: mark all        _c_: commit (checkin)  _g_: refresh (cvs up)
- ^^                   _U_: unmark all      _D_: delete file
- ^^
- ^State reference^
- ^^^^^^^^──────────────────────────────────────────────────────────────────
- up-to-date = clean    edited = modified    added = staged
- removed = to delete   unregistered = new (use _a_ to add)
- ^^
- _w_: resize window    _q_: quit hydra       _?_: describe mode
-"
-  ;; Navigation
-  ("n" vc-dir-next-line)
-  ("p" vc-dir-previous-line)
-  ("RET" vc-dir-find-file :color blue)
-  ;; Mark
-  ("m" vc-dir-mark)
-  ("u" vc-dir-unmark)
-  ("M" vc-dir-mark-all-files)
-  ("U" vc-dir-unmark-all-files)
-  ;; Actions
-  ("v" vc-next-action :color blue)
-  ("a" vc-dir-register :color blue)
-  ("c" vc-next-action :color blue)
-  ("D" vc-dir-delete-file :color blue)
-  ;; View
-  ("=" vc-diff)
-  ("l" vc-print-log :color blue)
-  ("g" vc-dir-refresh)
-  ;; Window / Help / quit
-  ("w" hydra-window/body :color blue)
-  ("?" describe-mode :color blue)
-  ("q" nil :color blue))
+;; AI code assistant
+(unless (file-directory-p "~/.emacs.d/eca-emacs")
+  (shell-command "git clone https://github.com/editor-code-assistant/eca-emacs ~/.emacs.d/eca-emacs"))
+(use-package dash :ensure t)
+(use-package f :ensure t)
+(use-package compat :ensure t)
+(use-package eca
+  :load-path "~/.emacs.d/eca-emacs"
+  :config
+  (setq eca-chat-auto-add-cursor t))
 
-;; Diff hydra - press ? in diff buffers to navigate hunks
-(defhydra hydra-diff (:hint nil :color pink :foreign-keys run)
-  "
- ^Hunk^                ^File^               ^Actions^
- ^^^^^^^^──────────────────────────────────────────────────
- _n_: next hunk        _N_: next file       _a_: apply hunk
- _p_: prev hunk        _P_: prev file       _RET_: visit source
- ^^                   ^^                   _r_: reverse hunk
- ^^                   ^^                   _e_: edit hunk
- ^^
- _w_: resize window    _q_: quit hydra
-"
-  ("n" diff-hunk-next)
-  ("p" diff-hunk-prev)
-  ("N" diff-file-next)
-  ("P" diff-file-prev)
-  ("a" diff-apply-hunk :color blue)
-  ("r" diff-reverse-direction)
-  ("e" diff-ediff-patch :color blue)
-  ("RET" diff-goto-source :color blue)
-  ("w" hydra-window/body :color blue)
-  ("q" nil :color blue))
-
-(add-hook 'diff-mode-hook
-          (lambda ()
-            (define-key diff-mode-map (kbd "?") #'hydra-diff/body)))
-
-(add-hook 'vc-dir-mode-hook
-          (lambda ()
-            (define-key vc-dir-mode-map (kbd "?") #'hydra-vc-dir/body)))
-
-;; Window management hydra - press C-c w to manage splits
-(defhydra hydra-window (:hint nil :color pink :foreign-keys warn)
-  "
- ^Move^             ^Resize^              ^Split^              ^Layout^
- ^^^^^^^^──────────────────────────────────────────────────────────────────
- _h_/_l_: left/right  _H_/_L_: shrink/grow w  _v_: split vertical    _u_: undo layout
- _j_/_k_: down/up     _J_/_K_: shrink/grow h  _s_: split horizontal  _U_: redo layout
- ^^                  _=_: balance all       _c_: close window      _o_: only this window
- ^^                  ^^                    ^^                    _S_: swap windows
- ^^
- ^Buffer^
- ^^^^^^^^──────────────────────────────────────────────────────────────────
- _b_: switch buffer  _f_: find file         _d_: dired
- ^^
- _q_: quit
-"
-  ;; Move between windows
-  ("h" windmove-left)
-  ("l" windmove-right)
-  ("j" windmove-down)
-  ("k" windmove-up)
-  ;; Resize
-  ("H" shrink-window-horizontally)
-  ("L" enlarge-window-horizontally)
-  ("K" shrink-window)
-  ("J" enlarge-window)
-  ("=" balance-windows)
-  ;; Split
-  ("v" split-window-right)
-  ("s" split-window-below)
-  ("c" delete-window)
-  ("o" delete-other-windows :color blue)
-  ;; Layout
-  ("u" winner-undo)
-  ("U" winner-redo)
-  ("S" window-swap-states)
-  ;; Buffer
-  ("b" switch-to-buffer :color blue)
-  ("f" find-file :color blue)
-  ("d" dired :color blue)
-  ;; Quit
-  ("q" nil :color blue))
-
-(global-set-key (kbd "C-c w") 'hydra-window/body)
+;; All hydras (navigate, search, edit, git, window, vc-dir, diff)
+(load-file "~/.emacs.d/plugins-dev/hydras.el")
 
 ;; Better Viewing of PDFs
 (use-package pdf-tools
@@ -587,12 +529,58 @@
 ;; Replace yes/no with y/n
 (defalias 'yes-or-no-p 'y-or-n-p)
 
+;; ====================
+;; PYTHON / LSP
+;; ====================
+
+;; Tree-sitter grammar sources
+(setq treesit-language-source-alist
+      '((python "https://github.com/tree-sitter/tree-sitter-python")))
+
+;; Auto-install python grammar if missing, then use tree-sitter mode
+(when (and (fboundp 'treesit-available-p) (treesit-available-p))
+  (unless (treesit-language-available-p 'python)
+    (treesit-install-language-grammar 'python))
+  (add-to-list 'major-mode-remap-alist '(python-mode . python-ts-mode)))
+
+;; Eglot with pyright
+(use-package eglot
+  :hook (python-ts-mode . eglot-ensure)
+  :config
+  (add-to-list 'eglot-server-programs
+               '(python-ts-mode . ("pyright-langserver" "--stdio"))))
+
+;; Ruff format + import sort on save
+(defun my/ruff-format-buffer ()
+  "Format buffer with ruff."
+  (when (derived-mode-p 'python-ts-mode)
+    (let ((point (point)))
+      (call-process-region (point-min) (point-max)
+                           "ruff" t t nil "format" "--stdin-filename"
+                           (or (buffer-file-name) "stdin.py") "-")
+      (goto-char point))))
+
+(defun my/ruff-isort-buffer ()
+  "Sort imports with ruff."
+  (when (derived-mode-p 'python-ts-mode)
+    (call-process-region (point-min) (point-max)
+                         "ruff" t t nil "check" "--select" "I" "--fix"
+                         "--stdin-filename"
+                         (or (buffer-file-name) "stdin.py") "-")))
+
+(defun my/python-format-on-save ()
+  (add-hook 'before-save-hook #'my/ruff-isort-buffer -10 t)
+  (add-hook 'before-save-hook #'my/ruff-format-buffer nil t))
+
+(add-hook 'python-ts-mode-hook #'my/python-format-on-save)
+
 ;; Load custom plugins
 (load-file "~/.emacs.d/plugins-dev/typesense-search.el")
 (load-file "~/.emacs.d/plugins-dev/latex.el")
 (load-file "~/.emacs.d/plugins-dev/consult.el")
 (load-file "~/.emacs.d/plugins-dev/directory.el")
 (load-file "~/.emacs.d/plugins-dev/own-functions.el")
+(load-file "~/.emacs.d/plugins-dev/second-brain.el")
 
 
 ;; Verify it loaded

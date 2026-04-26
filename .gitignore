@@ -9,9 +9,14 @@ history
 bookmarks
 custom.el
 tramp
+tramp-autosave
 transient/
 eshell/
 elpa/
 .DS_Store
 spelling
-
+eca-emacs/
+tree-sitter
+eca 
+eca-emacs
+eln-cache
